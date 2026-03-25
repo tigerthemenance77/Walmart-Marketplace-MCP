@@ -1,0 +1,36 @@
+{
+  "name": "walmart-marketplace-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Walmart Marketplace API — manage items, orders, inventory, and prices",
+  "type": "module",
+  "bin": {
+    "walmart-marketplace-mcp": "./dist/cli/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "echo 'no linter configured'",
+    "prepublishOnly": "npm run build"
+  },
+  "files": ["dist/", "README.md", ".env.example"],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "keyring": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.0.0",
+    "msw": "^2.0.0"
+  },
+  "engines": { "node": ">=18.0.0" },
+  "keywords": ["mcp", "walmart", "marketplace", "seller", "claude"],
+  "license": "MIT"
+}
