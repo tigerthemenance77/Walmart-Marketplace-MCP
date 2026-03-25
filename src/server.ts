@@ -30,6 +30,7 @@ const makeAuditId = (tool: string, ref: string): string => `audit_${new Date().t
 
 const registerTool = (name: string, fn: ToolHandler): [string, ToolHandler] => [name, fn];
 const registerPrompt = (_name: string, _config: unknown, _cb: () => unknown): void => {};
+const registerResource = (_name: string, _uri: string, _config: unknown, _cb: () => unknown): void => {};
 
 const tools: Record<string, ToolHandler> = Object.fromEntries([
   registerTool("list_accounts", async () => ({ accounts: await allAccounts() })),
@@ -298,6 +299,8 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
     const note = out.warning ? `${out.warning} | Endpoint limit: 20/hour` : "Endpoint limit: 20/hour";
     return withAccount(out.data, note);
   }),
+  registerTool("walmart-marketplace://api-docs", async () => ({ uri: "walmart-marketplace://api-docs", mimeType: "text/plain", text: API_DOCS })),
+  registerTool("walmart-marketplace://account-list", async () => ({ uri: "walmart-marketplace://account-list", mimeType: "application/json", json: await allAccounts() })),
 
 ]);
 
@@ -305,11 +308,87 @@ registerPrompt("onboarding", { description: "Guided setup for Walmart Marketplac
   messages: [{ role: "user", content: { type: "text", text: `Welcome to Walmart Marketplace MCP! Here's your setup guide:\n\nSTEP 1: Install CLI and add credentials\n  npx walmart-marketplace-mcp init\n  Follow the prompts for alias, Client ID, Client Secret, and environment.\n\nSTEP 2: Verify credentials\n  npx walmart-marketplace-mcp accounts verify <alias>\n  Should show: ✓ Connected as: [Seller Name] (Seller ID: [id])\n\nSTEP 3: Set active account in Claude\n  Call: set_account (alias: "<your-alias>")\n  Response will confirm the active account.\n\nSTEP 4: Run a test query\n  Call: get_orders (createdStartDate: "2026-03-25")\n  You should see your order list with the 📍 Account header.\n\nSTEP 5: Try a safe write (preview only)\n  Call: update_price (sku: "<your-sku>", currency: "USD", price: 19.99, dry_run: true)\n  This shows a preview — no changes are made. Pass dry_run=false to apply.\n\n⚠️ Write Safety: All write tools default to dry_run=true (preview mode). You must explicitly pass dry_run=false to execute any mutation.\n\n🚨 Rate Limits: Use get_rate_limits to check current usage. PRICE_AND_PROMOTION feeds are limited to 6/day — the server tracks and enforces this.` } }],
 }));
 
+registerResource("api-docs", "walmart-marketplace://api-docs", { description: "Tool reference catalog" }, () => ({
+  contents: [{ uri: "walmart-marketplace://api-docs", mimeType: "text/plain", text: API_DOCS }],
+}));
+
+registerResource("account-list", "walmart-marketplace://account-list", { description: "Configured accounts" }, async () => ({
+  contents: [{ uri: "walmart-marketplace://account-list", mimeType: "application/json", text: JSON.stringify(await allAccounts(), null, 2) }],
+}));
+
+const API_DOCS = `walmart-marketplace://api-docs — Tool Reference
+================================================
+
+ACCOUNT MANAGEMENT
+  list_accounts          READ   — List all configured seller accounts
+  get_active_account     READ   — Show currently pinned account
+  set_account            LOCAL  — Pin an account by alias
+  switch_account         LOCAL  — Switch to a different account
+  refresh_account_info   READ   — Refresh seller identity from API
+  get_rate_limits        LOCAL  — Show rate limit usage dashboard
+
+ITEMS
+  get_items              READ   — List items in catalog
+  get_item               READ   — Get item details by SKU or ID
+  retire_item            DANGER — Remove item from Walmart.com (irreversible)
+
+ORDERS
+  get_orders             READ   — List orders with filters
+  get_order              READ   — Get single order details
+  get_released_orders    READ   — Get orders ready for fulfillment
+  acknowledge_order      WARN   — Acknowledge receipt of order (dry_run default)
+  ship_order             WARN   — Submit shipping confirmation (dry_run default)
+
+INVENTORY
+  get_inventory          READ   — Check inventory levels by SKU
+  update_inventory       WARN   — Update single SKU quantity (dry_run default)
+  bulk_update_inventory  DANGER — Bulk inventory update via feed (dry_run default)
+
+PRICES
+  get_promo_price        READ   — Get current price and promotion
+  update_price           WARN   — Update single item price (dry_run default)
+  bulk_update_prices     DANGER — Bulk price update via feed, 6/day limit (dry_run default)
+
+FEEDS
+  submit_feed            WARN/DANGER — Submit bulk feed (severity depends on feedType)
+  get_feed_item_status   READ   — Get feed status with item-level detail
+  list_feeds             READ   — List recent feeds
+
+RETURNS
+  get_returns            READ   — List return orders
+  issue_refund           DANGER — Issue refund for return (irreversible, dry_run default)
+
+RULES
+  get_rules              READ   — List shipping/assortment rules
+  get_rule               READ   — Get single rule details
+  get_subcategories      READ   — Get rule subcategory options
+  get_areas              READ   — Get shipping area options
+  download_exceptions    READ   — Download rule exception file
+  create_rule            WARN   — Create new rule (dry_run default)
+  update_rule            WARN   — Update existing rule (dry_run default)
+  delete_rule            DANGER — Delete rule (dry_run default)
+  inactivate_rule        WARN   — Inactivate rule (dry_run default)
+  create_exceptions      WARN   — Create rule exceptions (dry_run default)
+
+SETTINGS
+  get_carriers           READ   — List available shipping carriers
+  get_fulfillment_centers READ  — List fulfillment center coverage
+  create_fulfillment_center WARN — Add new fulfillment center (dry_run default)
+  update_fulfillment_center WARN — Update fulfillment center (dry_run default)
+  create_3pl_node        WARN   — Add 3PL ship node (dry_run default)
+  get_3pl_providers      READ   — List 3PL provider options
+
+LAGTIME
+  get_lagtime            READ   — Get fulfillment lag time for SKU (20/hour limit)
+
+Severity: READ (safe) | WARN (write, reversible) | DANGER (write, irreversible or rate-limited)
+All WARN/DANGER tools default to dry_run=true — pass dry_run=false to execute.`;
+
 export const handleTool = async (method: string, params: unknown): Promise<unknown> => {
   const fn = tools[method];
   if (!fn) throw new Error(`Unknown method: ${method}`);
 
-  const accountFree = new Set(["list_accounts", "get_active_account", "set_account", "switch_account"]);
+  const accountFree = new Set(["list_accounts", "get_active_account", "set_account", "switch_account", "walmart-marketplace://api-docs", "walmart-marketplace://account-list"]);
   if (!accountFree.has(method)) requireActiveAccount();
 
   return fn(params);
