@@ -5,17 +5,25 @@ export interface LimitDef {
   windowMs: number;
 }
 
-export const PHASE1_LIMITS: LimitDef[] = [
+export const LIMITS: LimitDef[] = [
   { path: "/v3/orders", method: "GET", max: 5000, windowMs: 60_000 },
   { path: "/v3/orders/released", method: "GET", max: 60, windowMs: 60_000 },
   { path: "/v3/orders/*/acknowledge", method: "POST", max: 60, windowMs: 60_000 },
   { path: "/v3/orders/*/shipping", method: "POST", max: 60, windowMs: 60_000 },
   { path: "/v3/items", method: "GET", max: 300, windowMs: 60_000 },
   { path: "/v3/items/*", method: "GET", max: 900, windowMs: 60_000 },
+  { path: "/v3/items/*", method: "DELETE", max: 100, windowMs: 3_600_000 },
   { path: "/v3/inventory", method: "GET", max: 200, windowMs: 60_000 },
   { path: "/v3/inventory", method: "PUT", max: 200, windowMs: 60_000 },
   { path: "/v3/price", method: "PUT", max: 100, windowMs: 3_600_000 },
   { path: "/v3/promo/sku/*", method: "GET", max: 300, windowMs: 60_000 },
+  { path: "/v3/feeds", method: "POST", max: 10, windowMs: 3_600_000 },
+  { path: "/v3/feeds/*", method: "GET", max: 5000, windowMs: 60_000 },
+  { path: "/v3/returns", method: "GET", max: 50, windowMs: 60_000 },
+  { path: "/v3/returns/*/refund", method: "POST", max: 60, windowMs: 60_000 },
+  { path: "/v3/lagtime", method: "GET", max: 20, windowMs: 3_600_000 },
+  { path: "/v3/rules", method: "GET", max: 300, windowMs: 60_000 },
+  { path: "/v3/settings/shipping/*", method: "GET", max: 300, windowMs: 60_000 },
 ];
 
 interface BucketState {
@@ -29,18 +37,15 @@ export class RateLimiter {
   private readonly limits: LimitDef[];
   private readonly buckets = new Map<string, BucketState>();
 
-  constructor(limits: LimitDef[] = PHASE1_LIMITS) {
+  constructor(limits: LimitDef[] = LIMITS) {
     this.limits = limits;
   }
 
   check(method: string, path: string):
     | { allowed: true; remaining: number; warning?: string }
     | { allowed: false; error: string; retryAfterMs: number } {
-    const normalized = normalize(path);
-    const hit = this.limits.find((l) => l.method === method.toUpperCase() && this.matchPath(l.path, path, normalized));
-    if (!hit) {
-      return { allowed: true, remaining: Number.MAX_SAFE_INTEGER };
-    }
+    const hit = this.findLimit(method, path);
+    if (!hit) return { allowed: true, remaining: Number.MAX_SAFE_INTEGER };
 
     const key = `${hit.method}:${hit.path}`;
     const now = Date.now();
@@ -56,10 +61,15 @@ export class RateLimiter {
 
     const usedPct = (current.used / hit.max) * 100;
     const remaining = hit.max - current.used;
-    if (usedPct >= 80) {
-      return { allowed: true, remaining, warning: `Rate usage high (${usedPct.toFixed(1)}%) for ${hit.method} ${hit.path}` };
-    }
+    if (usedPct >= 80) return { allowed: true, remaining, warning: `Rate usage high (${usedPct.toFixed(1)}%) for ${hit.method} ${hit.path}` };
     return { allowed: true, remaining };
+  }
+
+  sync429(method: string, path: string): void {
+    const hit = this.findLimit(method, path);
+    if (!hit) return;
+    const key = `${hit.method}:${hit.path}`;
+    this.buckets.set(key, { used: hit.max, resetAt: Date.now() + hit.windowMs });
   }
 
   snapshot(): Array<{ method: string; path: string; used: number; max: number; windowMs: number; usagePct: number }> {
@@ -72,8 +82,10 @@ export class RateLimiter {
     });
   }
 
-  private matchPath(limitPath: string, realPath: string, normalized: string): boolean {
-    return limitPath === realPath || limitPath === normalized;
+  private findLimit(method: string, path: string): LimitDef | undefined {
+    const m = method.toUpperCase();
+    const normalized = normalize(path);
+    return this.limits.find((l) => l.method === m && (l.path === path || l.path === normalized));
   }
 }
 

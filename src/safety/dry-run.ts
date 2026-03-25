@@ -1,4 +1,4 @@
-import { warnResponse } from "./severity.js";
+import { dangerResponse, warnResponse } from "./severity.js";
 
 export const previewAcknowledgeOrder = (purchaseOrderId: string, order: { orderDate?: string; status?: string; orderLines?: unknown[] }) =>
   warnResponse(
@@ -48,4 +48,28 @@ export const previewPrice = (sku: string, currentPrice: number, price: number) =
       percentChange: currentPrice === 0 ? "N/A" : `${(((price - currentPrice) / currentPrice) * 100).toFixed(1)}%`,
     },
     "Call again with dry_run=false to apply this price change.",
+  );
+
+export const previewRetireItem = (sku: string) =>
+  dangerResponse(
+    "retire_item",
+    "🚨 DANGER — Retiring an item removes it from Walmart.com. Re-listing requires a new feed submission and review.",
+    { sku, action: "RETIRE" },
+    "Call again with dry_run=false to retire this item.",
+  );
+
+export const previewIssueRefund = (returnOrderId: string, refundLines: unknown[], totalRefund: number) =>
+  dangerResponse(
+    "issue_refund",
+    "🚨 DANGER — Refunds are irreversible financial transactions.",
+    { returnOrderId, refundLines, totalRefund },
+    "Call again with dry_run=false to issue this refund.",
+  );
+
+export const previewDeleteRule = (ruleId: string) =>
+  dangerResponse(
+    "delete_rule",
+    "🚨 DANGER — Deleting a rule affects shipping configuration for items governed by this rule.",
+    { ruleId, operation: "DELETE" },
+    "Call again with dry_run=false to delete this rule.",
   );

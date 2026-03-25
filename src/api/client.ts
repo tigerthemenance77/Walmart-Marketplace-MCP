@@ -5,7 +5,7 @@ import { rateLimiter } from "../utils/rate-limiter.js";
 
 export interface RequestOptions {
   alias: string;
-  method: "GET" | "POST" | "PUT";
+  method: "GET" | "POST" | "PUT" | "DELETE";
   path: string;
   query?: Record<string, string | number | undefined>;
   body?: unknown;
