@@ -299,8 +299,8 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
     const note = out.warning ? `${out.warning} | Endpoint limit: 20/hour` : "Endpoint limit: 20/hour";
     return withAccount(out.data, note);
   }),
-  registerTool("walmart-marketplace://api-docs", async () => ({ uri: "walmart-marketplace://api-docs", mimeType: "text/plain", text: API_DOCS })),
-  registerTool("walmart-marketplace://account-list", async () => ({ uri: "walmart-marketplace://account-list", mimeType: "application/json", json: await allAccounts() })),
+  registerTool("get_api_docs", async () => ({ mimeType: "text/plain", text: API_DOCS })),
+  registerTool("get_account_list_resource", async () => ({ mimeType: "application/json", accounts: await allAccounts() })),
 
 ]);
 

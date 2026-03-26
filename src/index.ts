@@ -1,46 +1,41 @@
-import { createInterface } from "node:readline";
+#!/usr/bin/env node
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
 import { handleTool, toolNames } from "./server.js";
 import { logger } from "./utils/logger.js";
 
-interface RpcReq {
-  jsonrpc: "2.0";
-  id: string | number | null;
-  method: string;
-  params?: unknown;
+const server = new McpServer(
+  { name: "walmart-marketplace-mcp", version: "0.1.0" },
+  { capabilities: { tools: {} } }
+);
+
+// Register all tools from server.ts via the SDK
+// Each tool accepts arbitrary JSON object params and delegates to the existing handler map.
+for (const name of toolNames) {
+  server.tool(
+    name,
+    // Generic passthrough schema — each handler does its own Zod validation internally
+    { params: z.record(z.unknown()).optional() },
+    async ({ params }: { params?: Record<string, unknown> }) => {
+      try {
+        const result = await handleTool(name, params ?? {});
+        return {
+          content: [{ type: "text" as const, text: typeof result === "string" ? result : JSON.stringify(result, null, 2) }],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.warn("tool error", { tool: name, message });
+        return {
+          content: [{ type: "text" as const, text: `Error: ${message}` }],
+          isError: true,
+        };
+      }
+    }
+  );
 }
 
-const writeJson = (obj: unknown): void => {
-  process.stdout.write(`${JSON.stringify(obj)}\n`);
-};
+logger.info("walmart-marketplace-mcp started", { tools: toolNames.length });
 
-const writeError = (id: string | number | null, message: string): void => {
-  writeJson({ jsonrpc: "2.0", id, error: { code: -32000, message } });
-};
-
-export const startServer = (): void => {
-  logger.info("walmart-marketplace-mcp started", { tools: toolNames.length });
-  const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
-
-  rl.on("line", async (line) => {
-    if (!line.trim()) return;
-
-    let req: RpcReq;
-    try {
-      req = JSON.parse(line) as RpcReq;
-    } catch {
-      writeError(null, "Invalid JSON");
-      return;
-    }
-
-    try {
-      const result = await handleTool(req.method, req.params);
-      writeJson({ jsonrpc: "2.0", id: req.id, result });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Internal error";
-      logger.warn("request failed", { method: req.method, message });
-      writeError(req.id, message);
-    }
-  });
-};
-
-startServer();
+const transport = new StdioServerTransport();
+await server.connect(transport);
