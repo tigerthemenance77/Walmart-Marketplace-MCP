@@ -11,6 +11,53 @@ const prompt = async (q: string): Promise<string> => {
   return ans.trim();
 };
 
+const promptHidden = async (q: string): Promise<string> => {
+  if (!stdin.isTTY) return prompt(q);
+
+  return await new Promise<string>((resolve, reject) => {
+    stdout.write(q);
+    let value = "";
+
+    stdin.setRawMode?.(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+
+    const onData = (chunk: string) => {
+      const ch = chunk;
+
+      if (ch === "\r" || ch === "\n") {
+        stdout.write("\n");
+        stdin.setRawMode?.(false);
+        stdin.pause();
+        stdin.off("data", onData);
+        resolve(value.trim());
+        return;
+      }
+
+      if (ch === "\u0003") {
+        stdin.setRawMode?.(false);
+        stdin.pause();
+        stdin.off("data", onData);
+        reject(new Error("Input cancelled"));
+        return;
+      }
+
+      if (ch === "\u007f") {
+        if (value.length > 0) {
+          value = value.slice(0, -1);
+          stdout.write("\b \b");
+        }
+        return;
+      }
+
+      value += ch;
+      stdout.write("*");
+    };
+
+    stdin.on("data", onData);
+  });
+};
+
 const ensureFallbackPasswordForInit = async (): Promise<void> => {
   const keychainAvailable = await isKeychainAvailable();
   if (keychainAvailable) return;
@@ -38,7 +85,7 @@ export const runInit = async (): Promise<void> => {
 
   const alias = await prompt("Account alias: ");
   const clientId = await prompt("Client ID: ");
-  const clientSecret = await prompt("Client Secret: ");
+  const clientSecret = await promptHidden("Client Secret: ");
   const env = ((await prompt("Environment (production/sandbox) [production]: ")) || "production") as
     | "production"
     | "sandbox";
