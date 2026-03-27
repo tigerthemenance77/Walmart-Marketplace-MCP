@@ -230,6 +230,8 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
       refundLines: z.array(z.unknown()).default([]),
       purchaseOrderId: z.string().optional(),
       refundAmount: z.number().optional(),
+      orderLineNumber: z.string().optional(),
+      refundReason: z.string().optional(),
       dry_run: z.boolean().default(true),
     }).strict().parse(params);
 
