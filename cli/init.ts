@@ -111,6 +111,11 @@ const parseInitFlags = (args: string[]): InitArgs => {
   return out;
 };
 
+const maskClientId = (value: string): string => {
+  if (value.length <= 8) return "*".repeat(value.length);
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+};
+
 export const runInit = async (args: string[] = []): Promise<void> => {
   const flags = parseInitFlags(args);
   await ensureFallbackPasswordForInit();
@@ -125,6 +130,21 @@ export const runInit = async (args: string[] = []): Promise<void> => {
   const sellerName =
     detail.sellerName || (env === "sandbox" ? "Seller details unavailable (sandbox)" : "Seller details unavailable");
   const sellerId = detail.sellerId || (env === "sandbox" ? "sandbox-unavailable" : "unavailable");
+  const allRequiredFromFlags = Boolean(flags.alias && flags.clientId && flags.clientSecret && flags.env);
+
+  stdout.write("\n");
+  stdout.write(`Account alias:    ${alias}\n`);
+  stdout.write(`Client ID:        ${maskClientId(clientId)}\n`);
+  stdout.write(`Environment:      ${env}\n`);
+  stdout.write(`Seller:           ${sellerName} (ID: ${sellerId})\n\n`);
+
+  if (!allRequiredFromFlags) {
+    const confirm = await prompt("Save this account? [Y/n]: ");
+    if (confirm.trim().toLowerCase() === "n") {
+      stdout.write("Aborted. Account not saved.\n");
+      return;
+    }
+  }
 
   await saveAccount({
     alias,
