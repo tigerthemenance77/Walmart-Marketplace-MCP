@@ -8,7 +8,7 @@ const FEED_USAGE_DIR = join(homedir(), ".walmart-marketplace-mcp");
 const FEED_USAGE_FILE = join(FEED_USAGE_DIR, "feed-usage.json");
 const DAILY_LIMITED_FEEDS = new Set(["PRICE_AND_PROMOTION", "promo", "lagtime", "WALMART_FUNDED_INCENTIVES_ENROLLMENT"]);
 
-export type FeedUsage = Record<string, { count: number; date: string }>;
+export type FeedUsage = Record<string, { count: number; date: string; lastUsed?: string }>;
 
 const todayUtc = (): string => new Date().toISOString().slice(0, 10);
 
@@ -43,12 +43,25 @@ export const getDailyFeedUsage = async (feedType: string): Promise<{ used: numbe
   return { used, remaining: Math.max(0, 6 - used), limit: 6 };
 };
 
+export const getDailyFeedUsageBreakdown = async (): Promise<Array<{ type: string; count: number; lastUsed?: string }>> => {
+  const usage = await loadFeedUsage();
+  const today = todayUtc();
+  return Object.entries(usage)
+    .map(([type, rec]) => ({
+      type,
+      count: rec.date === today ? rec.count : 0,
+      lastUsed: rec.lastUsed,
+    }))
+    .filter((x) => x.count > 0)
+    .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
+};
+
 const incrementDailyFeedUsage = async (feedType: string): Promise<void> => {
   const usage = await loadFeedUsage();
   const today = todayUtc();
   const current = usage[feedType];
   const count = current && current.date === today ? current.count : 0;
-  usage[feedType] = { count: count + 1, date: today };
+  usage[feedType] = { count: count + 1, date: today, lastUsed: new Date().toISOString() };
   await saveFeedUsage(usage);
 };
 

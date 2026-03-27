@@ -8,7 +8,7 @@ import { getItems, getItem, retireItem } from "./api/items.js";
 import { getOrders, getOrder, getReleasedOrders, acknowledgeOrder, shipOrder } from "./api/orders.js";
 import { getInventory, updateInventory } from "./api/inventory.js";
 import { getPromoPrice, updatePrice } from "./api/prices.js";
-import { bulkUpdateInventory, bulkUpdatePrices, feedSeverity, getDailyFeedUsage, getFeedItemStatus, listFeeds, submitFeed } from "./api/feeds.js";
+import { bulkUpdateInventory, bulkUpdatePrices, feedSeverity, getDailyFeedUsage, getDailyFeedUsageBreakdown, getFeedItemStatus, listFeeds, submitFeed } from "./api/feeds.js";
 import { getReturns, issueRefund } from "./api/returns.js";
 import { createExceptions, createRule, deleteRule, downloadExceptions, getAreas, getRule, getRules, getSubcategories, inactivateRule, updateRule } from "./api/rules.js";
 import { create3plNode, createFulfillmentCenter, get3plProviders, getCarriers, getFulfillmentCenters, updateFulfillmentCenter } from "./api/settings.js";
@@ -18,6 +18,8 @@ import { writeAuditEntry } from "./safety/audit-log.js";
 import { rateLimiter } from "./utils/rate-limiter.js";
 import { dangerResponse, Severity, warnResponse } from "./safety/severity.js";
 import { isoDateSchema, priceSchema, purchaseOrderIdSchema, quantitySchema, skuSchema } from "./utils/validation.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { renderFeedUsageGauge } from "./visualizations/feed-usage-gauge.js";
 
 type PublicAccount = Pick<SellerAccount, "alias" | "sellerName" | "sellerId" | "env" | "addedAt">;
 
@@ -214,8 +216,37 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
   }),
   registerTool("get_daily_feed_usage", async (params) => {
     const input = z.object({ feedType: z.string().optional() }).strict().parse(params ?? {});
-    const usage = await getDailyFeedUsage(input.feedType ?? "PRICE_AND_PROMOTION");
-    return withAccount({ feedType: input.feedType ?? "PRICE_AND_PROMOTION", ...usage });
+    const feedType = input.feedType ?? "PRICE_AND_PROMOTION";
+    const usage = await getDailyFeedUsage(feedType);
+    const breakdown = await getDailyFeedUsageBreakdown();
+
+    const payload = withAccount({
+      feedType,
+      ...usage,
+      breakdown,
+      blocked: usage.used >= usage.limit,
+    });
+
+    const html = renderFeedUsageGauge({
+      used: usage.used,
+      limit: usage.limit,
+      feedType,
+      breakdown,
+    });
+
+    return {
+      content: [
+        { type: "text" as const, text: JSON.stringify(payload, null, 2) },
+        {
+          type: "resource" as const,
+          resource: {
+            uri: "walmart-marketplace://feed-usage-gauge",
+            mimeType: "text/html",
+            text: html,
+          },
+        },
+      ],
+    };
   }),
 
   registerTool("get_returns", async (params) => {
@@ -471,6 +502,10 @@ export function registerTools(server: McpServer): void {
   const runTool = async (method: string, params: unknown) => {
     try {
       const result = await handleTool(method, params);
+      // Explicit exception: get_daily_feed_usage returns a full CallToolResult directly.
+      if (method === "get_daily_feed_usage") {
+        return result as CallToolResult;
+      }
       return success(result);
     } catch (err) {
       return failure(err);
