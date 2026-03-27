@@ -93,8 +93,7 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
   }),
   registerTool("acknowledge_order", async (params) => {
     const input = z.object({ purchaseOrderId: purchaseOrderIdSchema, dry_run: z.boolean().default(true) }).strict().parse(params);
-    const order = await getOrder(activeAlias(), input.purchaseOrderId);
-    if (input.dry_run) return withAccount(previewAcknowledgeOrder(input.purchaseOrderId, order.data as Record<string, unknown>));
+    if (input.dry_run) return withAccount(previewAcknowledgeOrder(input.purchaseOrderId, {}));
 
     const out = await acknowledgeOrder(activeAlias(), input.purchaseOrderId);
     const ctx = requireActiveAccount();
@@ -120,11 +119,10 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
   }),
   registerTool("update_inventory", async (params) => {
     const input = z.object({ sku: skuSchema, quantity: quantitySchema, shipNodeId: z.string(), dry_run: z.boolean().default(true) }).strict().parse(params);
+    if (input.dry_run) return withAccount(previewInventory(input.sku, 0, input.quantity, input.shipNodeId));
+
     const current = await getInventory(activeAlias(), { sku: input.sku });
     const currentQuantity = Number((current.data as { quantity?: { amount?: number } })?.quantity?.amount ?? 0);
-
-    if (input.dry_run) return withAccount(previewInventory(input.sku, currentQuantity, input.quantity, input.shipNodeId), current.warning);
-
     const out = await updateInventory(activeAlias(), input.sku, input.quantity, input.shipNodeId);
     const ctx = requireActiveAccount();
     const auditId = makeAuditId("update_inventory", input.sku);
@@ -147,12 +145,11 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
     return withAccount(out.data, out.warning);
   }),
   registerTool("update_price", async (params) => {
-    const input = z.object({ sku: skuSchema, currency: z.string().min(3).max(3), price: priceSchema, promo: z.unknown().optional(), dry_run: z.boolean().default(true) }).strict().parse(params);
+    const input = z.object({ sku: skuSchema, currency: z.string().length(3).default("USD"), price: priceSchema, promo: z.unknown().optional(), dry_run: z.boolean().default(true) }).strict().parse(params);
+    if (input.dry_run) return withAccount(previewPrice(input.sku, 0, input.price, input.currency));
+
     const current = await getPromoPrice(activeAlias(), input.sku);
     const currentPrice = Number((current.data as { price?: { amount?: number } })?.price?.amount ?? 0);
-
-    if (input.dry_run) return withAccount(previewPrice(input.sku, currentPrice, input.price), current.warning);
-
     const out = await updatePrice(activeAlias(), { sku: input.sku, currency: input.currency, price: input.price, promo: input.promo });
     const ctx = requireActiveAccount();
     const auditId = makeAuditId("update_price", input.sku);
