@@ -210,7 +210,24 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
     return withAccount(out.data, out.warning);
   }),
   registerTool("issue_refund", async (params) => {
-    const input = z.object({ returnOrderId: z.string(), refundLines: z.array(z.unknown()).default([]), totalRefund: z.number(), dry_run: z.boolean().default(true) }).strict().parse(params);
+    const raw = z.object({
+      returnOrderId: z.string().optional(),
+      totalRefund: z.number().optional(),
+      refundLines: z.array(z.unknown()).default([]),
+      purchaseOrderId: z.string().optional(),
+      refundAmount: z.number().optional(),
+      dry_run: z.boolean().default(true),
+    }).strict().parse(params);
+
+    const normalized = {
+      returnOrderId: raw.returnOrderId ?? raw.purchaseOrderId,
+      totalRefund: raw.totalRefund ?? raw.refundAmount,
+      refundLines: raw.refundLines,
+      dry_run: raw.dry_run,
+    };
+
+    const input = z.object({ returnOrderId: z.string(), totalRefund: z.number(), refundLines: z.array(z.unknown()), dry_run: z.boolean() }).parse(normalized);
+
     if (input.dry_run) return withAccount(previewIssueRefund(input.returnOrderId, input.refundLines, input.totalRefund));
     const out = await issueRefund(activeAlias(), input.returnOrderId, { refundLines: input.refundLines, totalRefund: input.totalRefund });
     const ctx = requireActiveAccount();
@@ -625,7 +642,14 @@ export function registerTools(server: McpServer): void {
 
   server.registerTool("issue_refund", {
     description: "Issue a refund for a return order (DANGER — irreversible financial). Defaults to dry_run=true.",
-    inputSchema: z.object({ returnOrderId: z.string(), refundLines: z.array(z.unknown()).default([]), totalRefund: z.number(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({
+      returnOrderId: z.string().optional(),
+      totalRefund: z.number().optional(),
+      refundLines: z.array(z.unknown()).default([]),
+      purchaseOrderId: z.string().optional(),
+      refundAmount: z.number().optional(),
+      dry_run: z.boolean().default(true),
+    })
   }, async (input) => {
     const result = await handleTool("issue_refund", input);
     return { content: [{ type: "text" as const, text: toText(result) }] };

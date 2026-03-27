@@ -88,4 +88,19 @@ describe("server tools", () => {
     const result = previewPrice("SKU123", 0, 9.99, "USD") as { preview: { currency?: string } };
     expect(result.preview.currency).toBe("USD");
   });
+
+  it("issue_refund accepts canonical returnOrderId + totalRefund", async () => {
+    const { handleTool } = await import("../../../src/server.js");
+    await expect(handleTool("issue_refund", { returnOrderId: "RO-123", totalRefund: 19.99, dry_run: true })).resolves.toBeTruthy();
+  });
+
+  it("issue_refund accepts legacy purchaseOrderId + refundAmount", async () => {
+    const { handleTool } = await import("../../../src/server.js");
+    await expect(handleTool("issue_refund", { purchaseOrderId: "PO-123", refundAmount: 19.99, dry_run: true })).resolves.toBeTruthy();
+  });
+
+  it("issue_refund throws when neither canonical nor legacy keys present", async () => {
+    const { handleTool } = await import("../../../src/server.js");
+    await expect(handleTool("issue_refund", { dry_run: true })).rejects.toThrow();
+  });
 });
