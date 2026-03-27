@@ -213,9 +213,9 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
     return withAccount(out.data, out.warning);
   }),
   registerTool("get_daily_feed_usage", async (params) => {
-    const input = z.object({ feedType: z.string() }).strict().parse(params);
-    const usage = await getDailyFeedUsage(input.feedType);
-    return withAccount({ feedType: input.feedType, ...usage });
+    const input = z.object({ feedType: z.string().optional() }).strict().parse(params ?? {});
+    const usage = await getDailyFeedUsage(input.feedType ?? "PRICE_AND_PROMOTION");
+    return withAccount({ feedType: input.feedType ?? "PRICE_AND_PROMOTION", ...usage });
   }),
 
   registerTool("get_returns", async (params) => {
@@ -639,7 +639,7 @@ export function registerTools(server: McpServer): void {
 
   server.registerTool("get_daily_feed_usage", {
     description: "Get daily feed usage (used/remaining/limit) for a feed type",
-    inputSchema: z.object({ feedType: z.string() })
+    inputSchema: z.object({ feedType: z.string().optional() })
   }, async ({ feedType }) => {
     const result = await handleTool("get_daily_feed_usage", { feedType });
     return { content: [{ type: "text" as const, text: toText(result) }] };
