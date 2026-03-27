@@ -80,15 +80,46 @@ const ensureFallbackPasswordForInit = async (): Promise<void> => {
   process.env.WALMART_MASTER_PASSWORD = masterPassword;
 };
 
-export const runInit = async (): Promise<void> => {
+type InitArgs = {
+  alias?: string;
+  clientId?: string;
+  clientSecret?: string;
+  env?: string;
+};
+
+const parseInitFlags = (args: string[]): InitArgs => {
+  const out: InitArgs = {};
+  for (let i = 0; i < args.length; i += 1) {
+    const key = args[i];
+    const val = args[i + 1];
+    if (!key?.startsWith("--")) continue;
+    if (!val || val.startsWith("--")) throw new Error(`Missing value for flag ${key}`);
+    if (key === "--alias") {
+      out.alias = val;
+      i += 1;
+    } else if (key === "--client-id") {
+      out.clientId = val;
+      i += 1;
+    } else if (key === "--client-secret") {
+      out.clientSecret = val;
+      i += 1;
+    } else if (key === "--env") {
+      out.env = val;
+      i += 1;
+    }
+  }
+  return out;
+};
+
+export const runInit = async (args: string[] = []): Promise<void> => {
+  const flags = parseInitFlags(args);
   await ensureFallbackPasswordForInit();
 
-  const alias = await prompt("Account alias: ");
-  const clientId = await prompt("Client ID: ");
-  const clientSecret = await promptHidden("Client Secret: ");
-  const env = ((await prompt("Environment (production/sandbox) [production]: ")) || "production") as
-    | "production"
-    | "sandbox";
+  const alias = flags.alias ?? (await prompt("Account alias: "));
+  const clientId = flags.clientId ?? (await prompt("Client ID: "));
+  const clientSecret = flags.clientSecret ?? (await promptHidden("Client Secret: "));
+  const envRaw = flags.env ?? (await prompt("Environment (production/sandbox) [production]: "));
+  const env = (envRaw || "production") as "production" | "sandbox";
 
   const detail = await verifyRawCredentials({ clientId, clientSecret, env });
   const sellerName =

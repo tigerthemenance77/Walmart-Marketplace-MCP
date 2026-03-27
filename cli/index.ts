@@ -22,7 +22,7 @@ const main = async (): Promise<void> => {
   }
 
   if (cmd === "init") {
-    await runInit();
+    await runInit(args.slice(1));
     return;
   }
 
