@@ -55,14 +55,9 @@ describe("runInit", () => {
 
   it("prompts for master password when keychain unavailable and env unset (TTY=true)", async () => {
     vi.mocked(isKeychainAvailable).mockResolvedValue(false);
-    questionMock
-      .mockResolvedValueOnce("secret123")
-      .mockResolvedValueOnce("alias")
-      .mockResolvedValueOnce("id")
-      .mockResolvedValueOnce("secret")
-      .mockResolvedValueOnce("sandbox");
+    questionMock.mockResolvedValueOnce("secret123");
 
-    await runInit();
+    await runInit(["--alias", "alias", "--client-id", "id", "--client-secret", "secret", "--env", "sandbox"]);
 
     expect(process.env.WALMART_MASTER_PASSWORD).toBe("secret123");
   });
@@ -78,13 +73,7 @@ describe("runInit", () => {
     vi.mocked(isKeychainAvailable).mockResolvedValue(false);
     process.env.WALMART_MASTER_PASSWORD = "existing";
 
-    questionMock
-      .mockResolvedValueOnce("alias")
-      .mockResolvedValueOnce("id")
-      .mockResolvedValueOnce("secret")
-      .mockResolvedValueOnce("sandbox");
-
-    await runInit();
+    await runInit(["--alias", "alias", "--client-id", "id", "--client-secret", "secret", "--env", "sandbox"]);
 
     expect(questionMock).not.toHaveBeenCalledWith("Master password for encrypted credential storage: ");
   });
@@ -92,13 +81,7 @@ describe("runInit", () => {
   it("does not prompt when keychain available", async () => {
     vi.mocked(isKeychainAvailable).mockResolvedValue(true);
 
-    questionMock
-      .mockResolvedValueOnce("alias")
-      .mockResolvedValueOnce("id")
-      .mockResolvedValueOnce("secret")
-      .mockResolvedValueOnce("sandbox");
-
-    await runInit();
+    await runInit(["--alias", "alias", "--client-id", "id", "--client-secret", "secret", "--env", "sandbox"]);
 
     expect(questionMock).not.toHaveBeenCalledWith("Master password for encrypted credential storage: ");
   });

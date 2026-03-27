@@ -87,6 +87,8 @@ type InitArgs = {
   env?: string;
 };
 
+type Environment = "production" | "sandbox";
+
 const parseInitFlags = (args: string[]): InitArgs => {
   const out: InitArgs = {};
   for (let i = 0; i < args.length; i += 1) {
@@ -116,6 +118,31 @@ const maskClientId = (value: string): string => {
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
 };
 
+const normalizeEnv = (input: string): Environment | null => {
+  const v = input.trim().toLowerCase();
+  if (["production", "prod", "p"].includes(v)) return "production";
+  if (["sandbox", "sand", "s"].includes(v)) return "sandbox";
+  return null;
+};
+
+const resolveEnv = async (fromFlag?: string): Promise<Environment> => {
+  if (typeof fromFlag === "string") {
+    const normalized = normalizeEnv(fromFlag || "production");
+    if (!normalized) {
+      throw new Error(`Invalid --env value "${fromFlag}". Use production/prod/p or sandbox/sand/s.`);
+    }
+    return normalized;
+  }
+
+  let candidate = await prompt("Environment (production/sandbox) [production]: ");
+  for (;;) {
+    const normalized = normalizeEnv(candidate || "production");
+    if (normalized) return normalized;
+    stdout.write("Invalid environment. Use production/prod/p or sandbox/sand/s.\n");
+    candidate = await prompt("Environment (production/sandbox) [production]: ");
+  }
+};
+
 export const runInit = async (args: string[] = []): Promise<void> => {
   const flags = parseInitFlags(args);
   await ensureFallbackPasswordForInit();
@@ -123,8 +150,7 @@ export const runInit = async (args: string[] = []): Promise<void> => {
   const alias = flags.alias ?? (await prompt("Account alias: "));
   const clientId = flags.clientId ?? (await prompt("Client ID: "));
   const clientSecret = flags.clientSecret ?? (await promptHidden("Client Secret: "));
-  const envRaw = flags.env ?? (await prompt("Environment (production/sandbox) [production]: "));
-  const env = (envRaw || "production") as "production" | "sandbox";
+  const env = await resolveEnv(flags.env);
 
   const detail = await verifyRawCredentials({ clientId, clientSecret, env });
   const sellerName =
