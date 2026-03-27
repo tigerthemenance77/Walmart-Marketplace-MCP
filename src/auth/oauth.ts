@@ -36,6 +36,7 @@ export const fetchAccessToken = async (alias: string, force = false): Promise<st
       Authorization: `Basic ${basic}`,
       "WM_QOS.CORRELATION_ID": newCorrelationId(),
       "WM_SVC.NAME": "Walmart Marketplace",
+      Accept: "application/json",
     },
     body: "grant_type=client_credentials",
   });
@@ -81,6 +82,7 @@ export const verifyRawCredentials = async (input: {
       Authorization: `Basic ${basic}`,
       "WM_QOS.CORRELATION_ID": newCorrelationId(),
       "WM_SVC.NAME": "Walmart Marketplace",
+      Accept: "application/json",
     },
     body: "grant_type=client_credentials",
   });
