@@ -463,20 +463,50 @@ const toText = (data: unknown): string =>
 
 /** Register all tools with the MCP SDK server instance (typed schemas for Claude). */
 export function registerTools(server: McpServer): void {
+  const success = (result: unknown) => ({ content: [{ type: "text" as const, text: toText(result) }] });
+  const failure = (err: unknown) => ({
+    content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+    isError: true as const,
+  });
+  const runTool = async (method: string, params: unknown) => {
+    try {
+      const result = await handleTool(method, params);
+      return success(result);
+    } catch (err) {
+      return failure(err);
+    }
+  };
+
   // ── Account management ──────────────────────────────────────────────────────
   server.registerTool("list_accounts", { annotations: { readOnlyHint: true }, description: "List all configured seller accounts from keychain" },
-    async () => ({ content: [{ type: "text" as const, text: toText({ accounts: await listPublicAccounts() }) }] }));
+    async () => {
+      try {
+        return success({ accounts: await listPublicAccounts() });
+      } catch (err) {
+        return failure(err);
+      }
+    });
 
   server.registerTool("get_active_account", { annotations: { readOnlyHint: true }, description: "Return the currently pinned seller account, or 'none set' if no account is selected" },
-    async () => ({ content: [{ type: "text" as const, text: toText({ active: getActiveAccount() ?? "none set" }) }] }));
+    async () => {
+      try {
+        return success({ active: getActiveAccount() ?? "none set" });
+      } catch (err) {
+        return failure(err);
+      }
+    });
 
   server.registerTool("set_account", {
     annotations: { readOnlyHint: false, destructiveHint: false },
     description: "Pin a seller account by alias. Required before any data or write tool.",
     inputSchema: z.object({ alias: z.string().min(1) })
   }, async ({ alias }) => {
-    const ctx = await setActiveAccount(alias);
-    return { content: [{ type: "text" as const, text: toText({ active: ctx, account: accountBanner() }) }] };
+    try {
+      const ctx = await setActiveAccount(alias);
+      return success({ active: ctx, account: accountBanner() });
+    } catch (err) {
+      return failure(err);
+    }
   });
 
   server.registerTool("switch_account", {
@@ -484,198 +514,139 @@ export function registerTools(server: McpServer): void {
     description: "Switch to a different seller account. Confirms switch before proceeding.",
     inputSchema: z.object({ alias: z.string().min(1) })
   }, async ({ alias }) => {
-    const out = await switchActiveAccount(alias);
-    return { content: [{ type: "text" as const, text: toText({ message: out.message, account: accountBanner() }) }] };
+    try {
+      const out = await switchActiveAccount(alias);
+      return success({ message: out.message, account: accountBanner() });
+    } catch (err) {
+      return failure(err);
+    }
   });
 
   server.registerTool("refresh_account_info", { annotations: { readOnlyHint: true }, description: "Re-fetch seller identity from Walmart API and update local cache" },
-    async () => {
-      const result = await handleTool("refresh_account_info", {});
-      return { content: [{ type: "text" as const, text: toText(result) }] };
-    });
+    async () => runTool("refresh_account_info", {}));
 
   server.registerTool("get_rate_limits", { annotations: { readOnlyHint: true }, description: "Show current rate limit usage for all tracked endpoints" },
-    async () => {
-      const result = await handleTool("get_rate_limits", {});
-      return { content: [{ type: "text" as const, text: toText(result) }] };
-    });
+    async () => runTool("get_rate_limits", {}));
 
   // ── Items ───────────────────────────────────────────────────────────────────
   server.registerTool("get_items", {
     annotations: { readOnlyHint: true },
     description: "List items in the seller catalog with optional filters",
     inputSchema: z.object({ nextCursor: z.string().optional(), sku: z.string().optional(), lifecycleStatus: z.string().optional(), publishedStatus: z.string().optional(), limit: z.number().optional() })
-  }, async (input) => {
-    const result = await handleTool("get_items", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("get_items", input));
 
   server.registerTool("get_item", {
     annotations: { readOnlyHint: true },
     description: "Get full item details by SKU or Walmart item ID",
     inputSchema: z.object({ id: z.string() })
-  }, async ({ id }) => {
-    const result = await handleTool("get_item", { id });
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async ({ id }) => runTool("get_item", { id }));
 
   server.registerTool("retire_item", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Remove an item from Walmart.com (DANGER — irreversible). Defaults to dry_run=true for preview.",
     inputSchema: z.object({ sku: skuSchema, dry_run: z.boolean().default(true) })
-  }, async (input) => {
-    const result = await handleTool("retire_item", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("retire_item", input));
 
   // ── Orders ──────────────────────────────────────────────────────────────────
   server.registerTool("get_orders", {
     annotations: { readOnlyHint: true },
     description: "List orders with filters. createdStartDate is required.",
     inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), status: z.string().optional(), shipNodeType: z.string().optional(), limit: z.number().optional() })
-  }, async (input) => {
-    const result = await handleTool("get_orders", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("get_orders", input));
 
   server.registerTool("get_order", {
     annotations: { readOnlyHint: true },
     description: "Get full details for a single order by purchase order ID",
     inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema })
-  }, async ({ purchaseOrderId }) => {
-    const result = await handleTool("get_order", { purchaseOrderId });
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async ({ purchaseOrderId }) => runTool("get_order", { purchaseOrderId }));
 
   server.registerTool("get_released_orders", {
     annotations: { readOnlyHint: true },
     description: "Get orders ready for fulfillment (status: Released)",
     inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), limit: z.number().optional() })
-  }, async (input) => {
-    const result = await handleTool("get_released_orders", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("get_released_orders", input));
 
   server.registerTool("acknowledge_order", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Acknowledge receipt of an order. Defaults to dry_run=true for preview.",
     inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema, dry_run: z.boolean().default(true) })
-  }, async (input) => {
-    const result = await handleTool("acknowledge_order", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("acknowledge_order", input));
 
   server.registerTool("ship_order", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Submit shipping confirmation with carrier and tracking. Defaults to dry_run=true for preview.",
     inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema, orderLines: z.array(z.object({ lineNumber: z.string(), carrierName: z.string(), trackingNumber: z.string() }).passthrough()), dry_run: z.boolean().default(true) })
-  }, async (input) => {
-    const result = await handleTool("ship_order", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("ship_order", input));
 
   // ── Inventory ───────────────────────────────────────────────────────────────
   server.registerTool("get_inventory", {
     annotations: { readOnlyHint: true },
     description: "Check inventory levels by SKU across ship nodes",
     inputSchema: z.object({ sku: z.string().optional(), source: z.string().optional() })
-  }, async (input) => {
-    const result = await handleTool("get_inventory", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("get_inventory", input));
 
   server.registerTool("update_inventory", {
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     description: "Update inventory quantity for a single SKU at a ship node. Defaults to dry_run=true for preview.",
     inputSchema: z.object({ sku: skuSchema, quantity: quantitySchema, shipNodeId: z.string(), dry_run: z.boolean().default(true) })
-  }, async (input) => {
-    const result = await handleTool("update_inventory", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("update_inventory", input));
 
   server.registerTool("bulk_update_inventory", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Bulk inventory update via feed file (DANGER). Defaults to dry_run=true for preview.",
     inputSchema: z.object({ feedPayload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => {
-    const result = await handleTool("bulk_update_inventory", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("bulk_update_inventory", input));
 
   // ── Prices ──────────────────────────────────────────────────────────────────
   server.registerTool("get_promo_price", {
     annotations: { readOnlyHint: true },
     description: "Get current price and any active promotional pricing for a SKU",
     inputSchema: z.object({ sku: skuSchema })
-  }, async ({ sku }) => {
-    const result = await handleTool("get_promo_price", { sku });
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async ({ sku }) => runTool("get_promo_price", { sku }));
 
   server.registerTool("update_price", {
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     description: "Update price for a single item. Defaults to dry_run=true for preview.",
     inputSchema: z.object({ sku: skuSchema, currency: z.string().length(3).default("USD"), price: priceSchema, promo: z.unknown().optional(), dry_run: z.boolean().default(true) })
-  }, async (input) => {
-    const result = await handleTool("update_price", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("update_price", input));
 
   server.registerTool("bulk_update_prices", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Bulk price update via PRICE_AND_PROMOTION feed (DANGER — 6/day limit). Defaults to dry_run=true.",
     inputSchema: z.object({ feedPayload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => {
-    const result = await handleTool("bulk_update_prices", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("bulk_update_prices", input));
 
   // ── Feeds ───────────────────────────────────────────────────────────────────
   server.registerTool("submit_feed", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Submit a bulk feed file. Severity depends on feedType (DANGER for 6/day feeds). Defaults to dry_run=true.",
     inputSchema: z.object({ feedType: z.string(), feedPayload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => {
-    const result = await handleTool("submit_feed", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("submit_feed", input));
 
   server.registerTool("get_feed_item_status", {
     annotations: { readOnlyHint: true },
     description: "Get feed processing status and item-level detail by feed ID",
     inputSchema: z.object({ feedId: z.string() })
-  }, async ({ feedId }) => {
-    const result = await handleTool("get_feed_item_status", { feedId });
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async ({ feedId }) => runTool("get_feed_item_status", { feedId }));
 
   server.registerTool("list_feeds", {
     annotations: { readOnlyHint: true },
     description: "List recent feed submissions with optional filters",
     inputSchema: z.object({ feedType: z.string().optional(), offset: z.number().optional(), limit: z.number().optional() })
-  }, async (input) => {
-    const result = await handleTool("list_feeds", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("list_feeds", input));
 
   server.registerTool("get_daily_feed_usage", {
     annotations: { readOnlyHint: true },
     description: "Get daily feed usage (used/remaining/limit) for a feed type",
     inputSchema: z.object({ feedType: z.string().optional() })
-  }, async ({ feedType }) => {
-    const result = await handleTool("get_daily_feed_usage", { feedType });
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async ({ feedType }) => runTool("get_daily_feed_usage", { feedType }));
 
   // ── Returns ─────────────────────────────────────────────────────────────────
   server.registerTool("get_returns", {
     annotations: { readOnlyHint: true },
     description: "List return orders with optional date and status filters",
     inputSchema: z.object({ nextCursor: z.string().optional(), returnCreationStartDate: isoDateSchema.optional(), returnCreationEndDate: isoDateSchema.optional(), status: z.string().optional() })
-  }, async (input) => {
-    const result = await handleTool("get_returns", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("get_returns", input));
 
   server.registerTool("issue_refund", {
     annotations: { readOnlyHint: false, destructiveHint: true },
@@ -688,94 +659,91 @@ export function registerTools(server: McpServer): void {
       refundAmount: z.number().optional(),
       dry_run: z.boolean().default(true),
     })
-  }, async (input) => {
-    const result = await handleTool("issue_refund", input);
-    return { content: [{ type: "text" as const, text: toText(result) }] };
-  });
+  }, async (input) => runTool("issue_refund", input));
 
   // ── Rules ───────────────────────────────────────────────────────────────────
   server.registerTool("get_rules", { annotations: { readOnlyHint: true }, description: "List all shipping and assortment rules" },
-    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_rules", {})) }] }));
+    async () => runTool("get_rules", {}));
 
   server.registerTool("get_rule", {
     annotations: { readOnlyHint: true },
     description: "Get details for a single rule by ID and status",
     inputSchema: z.object({ ruleId: z.string(), ruleStatus: z.string() })
-  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_rule", input)) }] }));
+  }, async (input) => runTool("get_rule", input));
 
   server.registerTool("get_subcategories", { annotations: { readOnlyHint: true }, description: "Get rule subcategory options" },
-    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_subcategories", {})) }] }));
+    async () => runTool("get_subcategories", {}));
 
   server.registerTool("get_areas", { annotations: { readOnlyHint: true }, description: "Get available shipping area options" },
-    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_areas", {})) }] }));
+    async () => runTool("get_areas", {}));
 
   server.registerTool("download_exceptions", { annotations: { readOnlyHint: true }, description: "Download rule exception file" },
-    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("download_exceptions", {})) }] }));
+    async () => runTool("download_exceptions", {}));
 
   server.registerTool("create_rule", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Create a new shipping or assortment rule. Defaults to dry_run=true.",
     inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("create_rule", input)) }] }));
+  }, async (input) => runTool("create_rule", input));
 
   server.registerTool("update_rule", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Update an existing rule. Defaults to dry_run=true.",
     inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("update_rule", input)) }] }));
+  }, async (input) => runTool("update_rule", input));
 
   server.registerTool("delete_rule", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Delete a rule (DANGER — affects shipping configuration). Defaults to dry_run=true.",
     inputSchema: z.object({ ruleId: z.string(), ruleStatus: z.string(), dry_run: z.boolean().default(true) })
-  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("delete_rule", input)) }] }));
+  }, async (input) => runTool("delete_rule", input));
 
   server.registerTool("inactivate_rule", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Inactivate a rule. Defaults to dry_run=true.",
     inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("inactivate_rule", input)) }] }));
+  }, async (input) => runTool("inactivate_rule", input));
 
   server.registerTool("create_exceptions", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Create rule exceptions. Defaults to dry_run=true.",
     inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("create_exceptions", input)) }] }));
+  }, async (input) => runTool("create_exceptions", input));
 
   // ── Settings ─────────────────────────────────────────────────────────────────
   server.registerTool("get_carriers", { annotations: { readOnlyHint: true }, description: "List available shipping carriers" },
-    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_carriers", {})) }] }));
+    async () => runTool("get_carriers", {}));
 
   server.registerTool("get_fulfillment_centers", { annotations: { readOnlyHint: true }, description: "List fulfillment center coverage" },
-    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_fulfillment_centers", {})) }] }));
+    async () => runTool("get_fulfillment_centers", {}));
 
   server.registerTool("create_fulfillment_center", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Add a new fulfillment center. Defaults to dry_run=true.",
     inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("create_fulfillment_center", input)) }] }));
+  }, async (input) => runTool("create_fulfillment_center", input));
 
   server.registerTool("update_fulfillment_center", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Update a fulfillment center. Defaults to dry_run=true.",
     inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("update_fulfillment_center", input)) }] }));
+  }, async (input) => runTool("update_fulfillment_center", input));
 
   server.registerTool("create_3pl_node", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Add a 3PL ship node. Defaults to dry_run=true.",
     inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
-  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("create_3pl_node", input)) }] }));
+  }, async (input) => runTool("create_3pl_node", input));
 
   server.registerTool("get_3pl_providers", { annotations: { readOnlyHint: true }, description: "List 3PL provider options" },
-    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_3pl_providers", {})) }] }));
+    async () => runTool("get_3pl_providers", {}));
 
   // ── Lagtime ──────────────────────────────────────────────────────────────────
   server.registerTool("get_lagtime", {
     annotations: { readOnlyHint: true },
     description: "Get fulfillment lag time for a SKU (20/hour rate limit — use sparingly)",
     inputSchema: z.object({ sku: skuSchema })
-  }, async ({ sku }) => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_lagtime", { sku })) }] }));
+  }, async ({ sku }) => runTool("get_lagtime", { sku }));
 
   // ── Prompts + Resources ───────────────────────────────────────────────────────
   server.registerPrompt("onboarding", { description: "Guided setup for Walmart Marketplace MCP" }, () => ({
