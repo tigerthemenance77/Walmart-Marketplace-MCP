@@ -499,7 +499,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool("set_account", {
     annotations: { readOnlyHint: false, destructiveHint: false },
     description: "Pin a seller account by alias. Required before any data or write tool.",
-    inputSchema: z.object({ alias: z.string().min(1) })
+    inputSchema: z.object({ alias: z.string().min(1) }).strict()
   }, async ({ alias }) => {
     try {
       const ctx = await setActiveAccount(alias);
@@ -512,7 +512,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool("switch_account", {
     annotations: { readOnlyHint: false, destructiveHint: false },
     description: "Switch to a different seller account. Confirms switch before proceeding.",
-    inputSchema: z.object({ alias: z.string().min(1) })
+    inputSchema: z.object({ alias: z.string().min(1) }).strict()
   }, async ({ alias }) => {
     try {
       const out = await switchActiveAccount(alias);
@@ -532,120 +532,120 @@ export function registerTools(server: McpServer): void {
   server.registerTool("get_items", {
     annotations: { readOnlyHint: true },
     description: "List items in the seller catalog with optional filters",
-    inputSchema: z.object({ nextCursor: z.string().optional(), sku: z.string().optional(), lifecycleStatus: z.string().optional(), publishedStatus: z.string().optional(), limit: z.number().optional() })
+    inputSchema: z.object({ nextCursor: z.string().optional(), sku: z.string().optional(), lifecycleStatus: z.string().optional(), publishedStatus: z.string().optional(), limit: z.number().optional() }).strict()
   }, async (input) => runTool("get_items", input));
 
   server.registerTool("get_item", {
     annotations: { readOnlyHint: true },
     description: "Get full item details by SKU or Walmart item ID",
-    inputSchema: z.object({ id: z.string().min(1) })
+    inputSchema: z.object({ id: z.string().min(1) }).strict()
   }, async ({ id }) => runTool("get_item", { id }));
 
   server.registerTool("retire_item", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Remove an item from Walmart.com (DANGER — irreversible). Defaults to dry_run=true for preview.",
-    inputSchema: z.object({ sku: skuSchema, dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ sku: skuSchema, dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("retire_item", input));
 
   // ── Orders ──────────────────────────────────────────────────────────────────
   server.registerTool("get_orders", {
     annotations: { readOnlyHint: true },
     description: "List orders with filters. createdStartDate is required.",
-    inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), status: z.string().optional(), shipNodeType: z.string().optional(), limit: z.number().int().min(1).max(200).optional() })
+    inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), status: z.string().optional(), shipNodeType: z.string().optional(), limit: z.number().int().min(1).max(200).optional() }).strict()
   }, async (input) => runTool("get_orders", input));
 
   server.registerTool("get_order", {
     annotations: { readOnlyHint: true },
     description: "Get full details for a single order by purchase order ID",
-    inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema })
+    inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema }).strict()
   }, async ({ purchaseOrderId }) => runTool("get_order", { purchaseOrderId }));
 
   server.registerTool("get_released_orders", {
     annotations: { readOnlyHint: true },
     description: "Get orders ready for fulfillment (status: Released)",
-    inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), limit: z.number().optional() })
+    inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), limit: z.number().optional() }).strict()
   }, async (input) => runTool("get_released_orders", input));
 
   server.registerTool("acknowledge_order", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Acknowledge receipt of an order. Defaults to dry_run=true for preview.",
-    inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema, dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema, dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("acknowledge_order", input));
 
   server.registerTool("ship_order", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Submit shipping confirmation with carrier and tracking. Defaults to dry_run=true for preview.",
-    inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema, orderLines: z.array(z.object({ lineNumber: z.string(), carrierName: z.string(), trackingNumber: z.string() }).passthrough()), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema, orderLines: z.array(z.object({ lineNumber: z.string(), carrierName: z.string(), trackingNumber: z.string() }).passthrough()), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("ship_order", input));
 
   // ── Inventory ───────────────────────────────────────────────────────────────
   server.registerTool("get_inventory", {
     annotations: { readOnlyHint: true },
     description: "Check inventory levels by SKU across ship nodes",
-    inputSchema: z.object({ sku: z.string().optional(), source: z.string().optional() })
+    inputSchema: z.object({ sku: z.string().optional(), source: z.string().optional() }).strict()
   }, async (input) => runTool("get_inventory", input));
 
   server.registerTool("update_inventory", {
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     description: "Update inventory quantity for a single SKU at a ship node. Defaults to dry_run=true for preview.",
-    inputSchema: z.object({ sku: skuSchema, quantity: quantitySchema, shipNodeId: z.string(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ sku: skuSchema, quantity: quantitySchema, shipNodeId: z.string(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("update_inventory", input));
 
   server.registerTool("bulk_update_inventory", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Bulk inventory update via feed file (DANGER). Defaults to dry_run=true for preview.",
-    inputSchema: z.object({ feedPayload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ feedPayload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("bulk_update_inventory", input));
 
   // ── Prices ──────────────────────────────────────────────────────────────────
   server.registerTool("get_promo_price", {
     annotations: { readOnlyHint: true },
     description: "Get current price and any active promotional pricing for a SKU",
-    inputSchema: z.object({ sku: skuSchema })
+    inputSchema: z.object({ sku: skuSchema }).strict()
   }, async ({ sku }) => runTool("get_promo_price", { sku }));
 
   server.registerTool("update_price", {
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     description: "Update price for a single item. Defaults to dry_run=true for preview.",
-    inputSchema: z.object({ sku: skuSchema, currency: z.string().length(3).default("USD"), price: priceSchema, promo: z.unknown().optional(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ sku: skuSchema, currency: z.string().length(3).default("USD"), price: priceSchema, promo: z.unknown().optional(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("update_price", input));
 
   server.registerTool("bulk_update_prices", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Bulk price update via PRICE_AND_PROMOTION feed (DANGER — 6/day limit). Defaults to dry_run=true.",
-    inputSchema: z.object({ feedPayload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ feedPayload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("bulk_update_prices", input));
 
   // ── Feeds ───────────────────────────────────────────────────────────────────
   server.registerTool("submit_feed", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Submit a bulk feed file. Severity depends on feedType (DANGER for 6/day feeds). Defaults to dry_run=true.",
-    inputSchema: z.object({ feedType: z.string(), feedPayload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ feedType: z.string(), feedPayload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("submit_feed", input));
 
   server.registerTool("get_feed_item_status", {
     annotations: { readOnlyHint: true },
     description: "Get feed processing status and item-level detail by feed ID",
-    inputSchema: z.object({ feedId: z.string() })
+    inputSchema: z.object({ feedId: z.string() }).strict()
   }, async ({ feedId }) => runTool("get_feed_item_status", { feedId }));
 
   server.registerTool("list_feeds", {
     annotations: { readOnlyHint: true },
     description: "List recent feed submissions with optional filters",
-    inputSchema: z.object({ feedType: z.string().optional(), offset: z.number().optional(), limit: z.number().optional() })
+    inputSchema: z.object({ feedType: z.string().optional(), offset: z.number().optional(), limit: z.number().optional() }).strict()
   }, async (input) => runTool("list_feeds", input));
 
   server.registerTool("get_daily_feed_usage", {
     annotations: { readOnlyHint: true },
     description: "Get daily feed usage (used/remaining/limit) for a feed type",
-    inputSchema: z.object({ feedType: z.string().optional() })
+    inputSchema: z.object({ feedType: z.string().optional() }).strict()
   }, async ({ feedType }) => runTool("get_daily_feed_usage", { feedType }));
 
   // ── Returns ─────────────────────────────────────────────────────────────────
   server.registerTool("get_returns", {
     annotations: { readOnlyHint: true },
     description: "List return orders with optional date and status filters",
-    inputSchema: z.object({ nextCursor: z.string().optional(), returnCreationStartDate: isoDateSchema.optional(), returnCreationEndDate: isoDateSchema.optional(), status: z.string().optional() })
+    inputSchema: z.object({ nextCursor: z.string().optional(), returnCreationStartDate: isoDateSchema.optional(), returnCreationEndDate: isoDateSchema.optional(), status: z.string().optional() }).strict()
   }, async (input) => runTool("get_returns", input));
 
   server.registerTool("issue_refund", {
@@ -658,7 +658,7 @@ export function registerTools(server: McpServer): void {
       purchaseOrderId: z.string().optional(),
       refundAmount: z.number().optional(),
       dry_run: z.boolean().default(true),
-    })
+    }).strict()
   }, async (input) => runTool("issue_refund", input));
 
   // ── Rules ───────────────────────────────────────────────────────────────────
@@ -668,7 +668,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool("get_rule", {
     annotations: { readOnlyHint: true },
     description: "Get details for a single rule by ID and status",
-    inputSchema: z.object({ ruleId: z.string(), ruleStatus: z.string() })
+    inputSchema: z.object({ ruleId: z.string(), ruleStatus: z.string() }).strict()
   }, async (input) => runTool("get_rule", input));
 
   server.registerTool("get_subcategories", { annotations: { readOnlyHint: true }, description: "Get rule subcategory options" },
@@ -683,31 +683,31 @@ export function registerTools(server: McpServer): void {
   server.registerTool("create_rule", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Create a new shipping or assortment rule. Defaults to dry_run=true.",
-    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("create_rule", input));
 
   server.registerTool("update_rule", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Update an existing rule. Defaults to dry_run=true.",
-    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("update_rule", input));
 
   server.registerTool("delete_rule", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Delete a rule (DANGER — affects shipping configuration). Defaults to dry_run=true.",
-    inputSchema: z.object({ ruleId: z.string(), ruleStatus: z.string(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ ruleId: z.string(), ruleStatus: z.string(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("delete_rule", input));
 
   server.registerTool("inactivate_rule", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Inactivate a rule. Defaults to dry_run=true.",
-    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("inactivate_rule", input));
 
   server.registerTool("create_exceptions", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Create rule exceptions. Defaults to dry_run=true.",
-    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("create_exceptions", input));
 
   // ── Settings ─────────────────────────────────────────────────────────────────
@@ -720,19 +720,19 @@ export function registerTools(server: McpServer): void {
   server.registerTool("create_fulfillment_center", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Add a new fulfillment center. Defaults to dry_run=true.",
-    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("create_fulfillment_center", input));
 
   server.registerTool("update_fulfillment_center", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Update a fulfillment center. Defaults to dry_run=true.",
-    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("update_fulfillment_center", input));
 
   server.registerTool("create_3pl_node", {
     annotations: { readOnlyHint: false, destructiveHint: true },
     description: "Add a 3PL ship node. Defaults to dry_run=true.",
-    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) }).strict()
   }, async (input) => runTool("create_3pl_node", input));
 
   server.registerTool("get_3pl_providers", { annotations: { readOnlyHint: true }, description: "List 3PL provider options" },
@@ -742,7 +742,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool("get_lagtime", {
     annotations: { readOnlyHint: true },
     description: "Get fulfillment lag time for a SKU (20/hour rate limit — use sparingly)",
-    inputSchema: z.object({ sku: skuSchema })
+    inputSchema: z.object({ sku: skuSchema }).strict()
   }, async ({ sku }) => runTool("get_lagtime", { sku }));
 
   // ── Prompts + Resources ───────────────────────────────────────────────────────
