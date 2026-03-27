@@ -567,7 +567,7 @@ export function registerTools(server: McpServer): void {
 
   server.registerTool("update_price", {
     description: "Update price for a single item. Defaults to dry_run=true for preview.",
-    inputSchema: z.object({ sku: skuSchema, currency: z.string().min(3).max(3), price: priceSchema, promo: z.unknown().optional(), dry_run: z.boolean().default(true) })
+    inputSchema: z.object({ sku: skuSchema, currency: z.string().length(3).default("USD"), price: priceSchema, promo: z.unknown().optional(), dry_run: z.boolean().default(true) })
   }, async (input) => {
     const result = await handleTool("update_price", input);
     return { content: [{ type: "text" as const, text: toText(result) }] };

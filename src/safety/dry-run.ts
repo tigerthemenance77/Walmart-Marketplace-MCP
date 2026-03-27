@@ -37,11 +37,12 @@ export const previewInventory = (sku: string, currentQuantity: number, quantity:
     "Call again with dry_run=false to apply this inventory change.",
   );
 
-export const previewPrice = (sku: string, currentPrice: number, price: number) =>
+export const previewPrice = (sku: string, currentPrice: number, price: number, currency: string) =>
   warnResponse(
     "update_price",
     {
       sku,
+      currency,
       currentPrice,
       proposedPrice: price,
       delta: price - currentPrice,
