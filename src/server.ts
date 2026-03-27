@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { allAccounts, accountBanner, getActiveAccount, requireActiveAccount, setActiveAccount, switchActiveAccount, saveAccount } from "./accounts/manager.js";
 import { getCredential } from "./credentials/manager.js";
 import { verifyAccountCredentials } from "./auth/oauth.js";
@@ -395,3 +396,312 @@ export const handleTool = async (method: string, params: unknown): Promise<unkno
 };
 
 export const toolNames = Object.keys(tools);
+
+const ONBOARDING_TEXT = `Welcome to Walmart Marketplace MCP! Here's your setup guide:
+
+STEP 1: Install CLI and add credentials
+  npx walmart-marketplace-mcp init
+  Follow the prompts for alias, Client ID, Client Secret, and environment.
+
+STEP 2: Verify credentials
+  npx walmart-marketplace-mcp accounts verify <alias>
+  Should show: ✓ Connected as: [Seller Name] (Seller ID: [id])
+
+STEP 3: Set active account in Claude
+  Call: set_account with your alias
+  Response will confirm the active account.
+
+STEP 4: Run a test query
+  Call: get_orders with createdStartDate
+  You should see your order list with the 📍 Account header.
+
+STEP 5: Try a safe write (preview only)
+  Call: update_price with sku, currency, price (dry_run defaults to true)
+  This shows a preview — no changes are made. Pass dry_run=false to apply.
+
+⚠️ Write Safety: All write tools default to dry_run=true (preview mode).
+🚨 Rate Limits: Use get_rate_limits. PRICE_AND_PROMOTION feeds are limited to 6/day.`;
+
+const toText = (data: unknown): string =>
+  typeof data === "string" ? data : JSON.stringify(data, null, 2);
+
+/** Register all tools with the MCP SDK server instance (typed schemas for Claude). */
+export function registerTools(server: McpServer): void {
+  // ── Account management ──────────────────────────────────────────────────────
+  server.registerTool("list_accounts", { description: "List all configured seller accounts from keychain" },
+    async () => ({ content: [{ type: "text" as const, text: toText({ accounts: await allAccounts() }) }] }));
+
+  server.registerTool("get_active_account", { description: "Return the currently pinned seller account, or 'none set' if no account is selected" },
+    async () => ({ content: [{ type: "text" as const, text: toText({ active: getActiveAccount() ?? "none set" }) }] }));
+
+  server.registerTool("set_account", {
+    description: "Pin a seller account by alias. Required before any data or write tool.",
+    inputSchema: z.object({ alias: z.string().min(1) })
+  }, async ({ alias }) => {
+    const ctx = await setActiveAccount(alias);
+    return { content: [{ type: "text" as const, text: toText({ active: ctx, account: accountBanner() }) }] };
+  });
+
+  server.registerTool("switch_account", {
+    description: "Switch to a different seller account. Confirms switch before proceeding.",
+    inputSchema: z.object({ alias: z.string().min(1) })
+  }, async ({ alias }) => {
+    const out = await switchActiveAccount(alias);
+    return { content: [{ type: "text" as const, text: toText({ message: out.message, account: accountBanner() }) }] };
+  });
+
+  server.registerTool("refresh_account_info", { description: "Re-fetch seller identity from Walmart API and update local cache" },
+    async () => {
+      const result = await handleTool("refresh_account_info", {});
+      return { content: [{ type: "text" as const, text: toText(result) }] };
+    });
+
+  server.registerTool("get_rate_limits", { description: "Show current rate limit usage for all tracked endpoints" },
+    async () => {
+      const result = await handleTool("get_rate_limits", {});
+      return { content: [{ type: "text" as const, text: toText(result) }] };
+    });
+
+  // ── Items ───────────────────────────────────────────────────────────────────
+  server.registerTool("get_items", {
+    description: "List items in the seller catalog with optional filters",
+    inputSchema: z.object({ nextCursor: z.string().optional(), sku: z.string().optional(), lifecycleStatus: z.string().optional(), publishedStatus: z.string().optional(), limit: z.number().optional() })
+  }, async (input) => {
+    const result = await handleTool("get_items", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("get_item", {
+    description: "Get full item details by SKU or Walmart item ID",
+    inputSchema: z.object({ id: z.string() })
+  }, async ({ id }) => {
+    const result = await handleTool("get_item", { id });
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("retire_item", {
+    description: "Remove an item from Walmart.com (DANGER — irreversible). Defaults to dry_run=true for preview.",
+    inputSchema: z.object({ sku: skuSchema, dry_run: z.boolean().default(true) })
+  }, async (input) => {
+    const result = await handleTool("retire_item", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  // ── Orders ──────────────────────────────────────────────────────────────────
+  server.registerTool("get_orders", {
+    description: "List orders with filters. createdStartDate is required.",
+    inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), status: z.string().optional(), shipNodeType: z.string().optional(), limit: z.number().optional() })
+  }, async (input) => {
+    const result = await handleTool("get_orders", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("get_order", {
+    description: "Get full details for a single order by purchase order ID",
+    inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema })
+  }, async ({ purchaseOrderId }) => {
+    const result = await handleTool("get_order", { purchaseOrderId });
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("get_released_orders", {
+    description: "Get orders ready for fulfillment (status: Released)",
+    inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), limit: z.number().optional() })
+  }, async (input) => {
+    const result = await handleTool("get_released_orders", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("acknowledge_order", {
+    description: "Acknowledge receipt of an order. Defaults to dry_run=true for preview.",
+    inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema, dry_run: z.boolean().default(true) })
+  }, async (input) => {
+    const result = await handleTool("acknowledge_order", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("ship_order", {
+    description: "Submit shipping confirmation with carrier and tracking. Defaults to dry_run=true for preview.",
+    inputSchema: z.object({ purchaseOrderId: purchaseOrderIdSchema, orderLines: z.array(z.object({ lineNumber: z.string(), carrierName: z.string(), trackingNumber: z.string() }).passthrough()), dry_run: z.boolean().default(true) })
+  }, async (input) => {
+    const result = await handleTool("ship_order", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  // ── Inventory ───────────────────────────────────────────────────────────────
+  server.registerTool("get_inventory", {
+    description: "Check inventory levels by SKU across ship nodes",
+    inputSchema: z.object({ sku: z.string().optional(), source: z.string().optional() })
+  }, async (input) => {
+    const result = await handleTool("get_inventory", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("update_inventory", {
+    description: "Update inventory quantity for a single SKU at a ship node. Defaults to dry_run=true for preview.",
+    inputSchema: z.object({ sku: skuSchema, quantity: quantitySchema, shipNodeId: z.string(), dry_run: z.boolean().default(true) })
+  }, async (input) => {
+    const result = await handleTool("update_inventory", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("bulk_update_inventory", {
+    description: "Bulk inventory update via feed file (DANGER). Defaults to dry_run=true for preview.",
+    inputSchema: z.object({ feedPayload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => {
+    const result = await handleTool("bulk_update_inventory", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  // ── Prices ──────────────────────────────────────────────────────────────────
+  server.registerTool("get_promo_price", {
+    description: "Get current price and any active promotional pricing for a SKU",
+    inputSchema: z.object({ sku: skuSchema })
+  }, async ({ sku }) => {
+    const result = await handleTool("get_promo_price", { sku });
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("update_price", {
+    description: "Update price for a single item. Defaults to dry_run=true for preview.",
+    inputSchema: z.object({ sku: skuSchema, currency: z.string().min(3).max(3), price: priceSchema, promo: z.unknown().optional(), dry_run: z.boolean().default(true) })
+  }, async (input) => {
+    const result = await handleTool("update_price", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("bulk_update_prices", {
+    description: "Bulk price update via PRICE_AND_PROMOTION feed (DANGER — 6/day limit). Defaults to dry_run=true.",
+    inputSchema: z.object({ feedPayload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => {
+    const result = await handleTool("bulk_update_prices", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  // ── Feeds ───────────────────────────────────────────────────────────────────
+  server.registerTool("submit_feed", {
+    description: "Submit a bulk feed file. Severity depends on feedType (DANGER for 6/day feeds). Defaults to dry_run=true.",
+    inputSchema: z.object({ feedType: z.string(), feedPayload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => {
+    const result = await handleTool("submit_feed", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("get_feed_item_status", {
+    description: "Get feed processing status and item-level detail by feed ID",
+    inputSchema: z.object({ feedId: z.string() })
+  }, async ({ feedId }) => {
+    const result = await handleTool("get_feed_item_status", { feedId });
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("list_feeds", {
+    description: "List recent feed submissions with optional filters",
+    inputSchema: z.object({ feedType: z.string().optional(), offset: z.number().optional(), limit: z.number().optional() })
+  }, async (input) => {
+    const result = await handleTool("list_feeds", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  // ── Returns ─────────────────────────────────────────────────────────────────
+  server.registerTool("get_returns", {
+    description: "List return orders with optional date and status filters",
+    inputSchema: z.object({ nextCursor: z.string().optional(), returnCreationStartDate: isoDateSchema.optional(), returnCreationEndDate: isoDateSchema.optional(), status: z.string().optional() })
+  }, async (input) => {
+    const result = await handleTool("get_returns", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("issue_refund", {
+    description: "Issue a refund for a return order (DANGER — irreversible financial). Defaults to dry_run=true.",
+    inputSchema: z.object({ returnOrderId: z.string(), refundLines: z.array(z.unknown()).default([]), totalRefund: z.number(), dry_run: z.boolean().default(true) })
+  }, async (input) => {
+    const result = await handleTool("issue_refund", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  // ── Rules ───────────────────────────────────────────────────────────────────
+  server.registerTool("get_rules", { description: "List all shipping and assortment rules" },
+    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_rules", {})) }] }));
+
+  server.registerTool("get_rule", {
+    description: "Get details for a single rule by ID and status",
+    inputSchema: z.object({ ruleId: z.string(), ruleStatus: z.string() })
+  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_rule", input)) }] }));
+
+  server.registerTool("get_subcategories", { description: "Get rule subcategory options" },
+    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_subcategories", {})) }] }));
+
+  server.registerTool("get_areas", { description: "Get available shipping area options" },
+    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_areas", {})) }] }));
+
+  server.registerTool("download_exceptions", { description: "Download rule exception file" },
+    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("download_exceptions", {})) }] }));
+
+  server.registerTool("create_rule", {
+    description: "Create a new shipping or assortment rule. Defaults to dry_run=true.",
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("create_rule", input)) }] }));
+
+  server.registerTool("update_rule", {
+    description: "Update an existing rule. Defaults to dry_run=true.",
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("update_rule", input)) }] }));
+
+  server.registerTool("delete_rule", {
+    description: "Delete a rule (DANGER — affects shipping configuration). Defaults to dry_run=true.",
+    inputSchema: z.object({ ruleId: z.string(), ruleStatus: z.string(), dry_run: z.boolean().default(true) })
+  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("delete_rule", input)) }] }));
+
+  server.registerTool("inactivate_rule", {
+    description: "Inactivate a rule. Defaults to dry_run=true.",
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("inactivate_rule", input)) }] }));
+
+  server.registerTool("create_exceptions", {
+    description: "Create rule exceptions. Defaults to dry_run=true.",
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("create_exceptions", input)) }] }));
+
+  // ── Settings ─────────────────────────────────────────────────────────────────
+  server.registerTool("get_carriers", { description: "List available shipping carriers" },
+    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_carriers", {})) }] }));
+
+  server.registerTool("get_fulfillment_centers", { description: "List fulfillment center coverage" },
+    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_fulfillment_centers", {})) }] }));
+
+  server.registerTool("create_fulfillment_center", {
+    description: "Add a new fulfillment center. Defaults to dry_run=true.",
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("create_fulfillment_center", input)) }] }));
+
+  server.registerTool("update_fulfillment_center", {
+    description: "Update a fulfillment center. Defaults to dry_run=true.",
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("update_fulfillment_center", input)) }] }));
+
+  server.registerTool("create_3pl_node", {
+    description: "Add a 3PL ship node. Defaults to dry_run=true.",
+    inputSchema: z.object({ payload: z.unknown(), dry_run: z.boolean().default(true) })
+  }, async (input) => ({ content: [{ type: "text" as const, text: toText(await handleTool("create_3pl_node", input)) }] }));
+
+  server.registerTool("get_3pl_providers", { description: "List 3PL provider options" },
+    async () => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_3pl_providers", {})) }] }));
+
+  // ── Lagtime ──────────────────────────────────────────────────────────────────
+  server.registerTool("get_lagtime", {
+    description: "Get fulfillment lag time for a SKU (20/hour rate limit — use sparingly)",
+    inputSchema: z.object({ sku: skuSchema })
+  }, async ({ sku }) => ({ content: [{ type: "text" as const, text: toText(await handleTool("get_lagtime", { sku })) }] }));
+
+  // ── Prompts + Resources ───────────────────────────────────────────────────────
+  server.registerPrompt("onboarding", { description: "Guided setup for Walmart Marketplace MCP" }, () => ({
+    messages: [{ role: "user" as const, content: { type: "text" as const, text: ONBOARDING_TEXT } }]
+  }));
+
+  server.registerResource("api-docs", "walmart-marketplace://api-docs", { description: "Tool reference catalog with severity labels" },
+    async () => ({ contents: [{ uri: "walmart-marketplace://api-docs", mimeType: "text/plain", text: API_DOCS }] }));
+
+  server.registerResource("account-list", "walmart-marketplace://account-list", { description: "Configured seller accounts" },
+    async () => ({ contents: [{ uri: "walmart-marketplace://account-list", mimeType: "application/json", text: JSON.stringify(await allAccounts(), null, 2) }] }));
+}
