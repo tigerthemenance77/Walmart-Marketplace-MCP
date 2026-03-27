@@ -201,6 +201,11 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
     const out = await listFeeds(activeAlias(), input);
     return withAccount(out.data, out.warning);
   }),
+  registerTool("get_daily_feed_usage", async (params) => {
+    const input = z.object({ feedType: z.string() }).strict().parse(params);
+    const usage = await getDailyFeedUsage(input.feedType);
+    return withAccount({ feedType: input.feedType, ...usage });
+  }),
 
   registerTool("get_returns", async (params) => {
     const input = z.object({ nextCursor: z.string().optional(), returnCreationStartDate: isoDateSchema.optional(), returnCreationEndDate: isoDateSchema.optional(), status: z.string().optional() }).strict().parse(params ?? {});
@@ -354,6 +359,7 @@ FEEDS
   submit_feed            WARN/DANGER — Submit bulk feed (severity depends on feedType)
   get_feed_item_status   READ   — Get feed status with item-level detail
   list_feeds             READ   — List recent feeds
+  get_daily_feed_usage   READ   — Get daily feed usage (used/remaining/limit) for a feed type
 
 RETURNS
   get_returns            READ   — List return orders
@@ -600,6 +606,14 @@ export function registerTools(server: McpServer): void {
     inputSchema: z.object({ feedType: z.string().optional(), offset: z.number().optional(), limit: z.number().optional() })
   }, async (input) => {
     const result = await handleTool("list_feeds", input);
+    return { content: [{ type: "text" as const, text: toText(result) }] };
+  });
+
+  server.registerTool("get_daily_feed_usage", {
+    description: "Get daily feed usage (used/remaining/limit) for a feed type",
+    inputSchema: z.object({ feedType: z.string() })
+  }, async ({ feedType }) => {
+    const result = await handleTool("get_daily_feed_usage", { feedType });
     return { content: [{ type: "text" as const, text: toText(result) }] };
   });
 
