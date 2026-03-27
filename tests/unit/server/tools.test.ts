@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockGetOrder = vi.fn();
 const mockGetInventory = vi.fn();
 const mockGetPromoPrice = vi.fn();
+const mockAllAccounts = vi.fn();
 
 vi.mock("../../../src/accounts/manager.js", async () => {
   const actual = await vi.importActual<typeof import("../../../src/accounts/manager.js")>("../../../src/accounts/manager.js");
   return {
     ...actual,
+    allAccounts: mockAllAccounts,
     requireActiveAccount: () => ({ alias: "a", sellerId: "1", sellerName: "Alpha", env: "production" as const, addedAt: "2026-01-01" }),
     accountBanner: () => "📍 Account: Alpha",
     getActiveAccount: () => "a",
@@ -32,6 +34,17 @@ vi.mock("../../../src/api/prices.js", async () => {
 describe("server tools", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAllAccounts.mockResolvedValue([
+      {
+        alias: "a",
+        sellerName: "Alpha",
+        sellerId: "1",
+        env: "production",
+        addedAt: "2026-01-01",
+        clientId: "secret-id",
+        clientSecret: "secret-secret",
+      },
+    ]);
   });
 
   it("toolNames includes get_daily_feed_usage", async () => {
@@ -102,5 +115,32 @@ describe("server tools", () => {
   it("issue_refund throws when neither canonical nor legacy keys present", async () => {
     const { handleTool } = await import("../../../src/server.js");
     await expect(handleTool("issue_refund", { dry_run: true })).rejects.toThrow();
+  });
+
+  it("list_accounts does not expose clientId or clientSecret", async () => {
+    const { handleTool } = await import("../../../src/server.js");
+    const result = await handleTool("list_accounts", {}) as { accounts: Array<Record<string, unknown>> };
+    expect(result.accounts[0]).not.toHaveProperty("clientId");
+    expect(result.accounts[0]).not.toHaveProperty("clientSecret");
+  });
+
+  it("account-list resource does not expose credentials", async () => {
+    const resourceHandlers = new Map<string, () => Promise<{ contents: Array<{ text: string }> }>>();
+    const fakeServer = {
+      registerTool: vi.fn(),
+      registerPrompt: vi.fn(),
+      registerResource: (_name: string, uri: string, _config: unknown, cb: () => Promise<{ contents: Array<{ text: string }> }>) => {
+        resourceHandlers.set(uri, cb);
+      },
+    } as any;
+
+    const { registerTools } = await import("../../../src/server.js");
+    registerTools(fakeServer);
+
+    const payload = await resourceHandlers.get("walmart-marketplace://account-list")?.();
+    const accounts = JSON.parse(payload?.contents[0]?.text ?? "[]") as Array<Record<string, unknown>>;
+
+    expect(accounts[0]).not.toHaveProperty("clientId");
+    expect(accounts[0]).not.toHaveProperty("clientSecret");
   });
 });

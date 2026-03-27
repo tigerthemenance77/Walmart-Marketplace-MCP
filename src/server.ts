@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { allAccounts, accountBanner, getActiveAccount, requireActiveAccount, setActiveAccount, switchActiveAccount, saveAccount } from "./accounts/manager.js";
+import type { SellerAccount } from "./accounts/types.js";
 import { getCredential } from "./credentials/manager.js";
 import { verifyAccountCredentials } from "./auth/oauth.js";
 import { getItems, getItem, retireItem } from "./api/items.js";
@@ -18,6 +19,19 @@ import { rateLimiter } from "./utils/rate-limiter.js";
 import { dangerResponse, Severity, warnResponse } from "./safety/severity.js";
 import { isoDateSchema, priceSchema, purchaseOrderIdSchema, quantitySchema, skuSchema } from "./utils/validation.js";
 
+type PublicAccount = Pick<SellerAccount, "alias" | "sellerName" | "sellerId" | "env" | "addedAt">;
+
+const toPublicAccount = (a: SellerAccount): PublicAccount => ({
+  alias: a.alias,
+  sellerName: a.sellerName,
+  sellerId: a.sellerId,
+  env: a.env,
+  addedAt: a.addedAt,
+});
+
+const listPublicAccounts = async (): Promise<PublicAccount[]> =>
+  (await allAccounts()).map(toPublicAccount);
+
 const withAccount = <T>(data: T, warning?: string): { data: T; account: string; warning?: string } => ({
   data,
   account: accountBanner(),
@@ -34,7 +48,7 @@ const registerPrompt = (_name: string, _config: unknown, _cb: () => unknown): vo
 const registerResource = (_name: string, _uri: string, _config: unknown, _cb: () => unknown): void => {};
 
 const tools: Record<string, ToolHandler> = Object.fromEntries([
-  registerTool("list_accounts", async () => ({ accounts: await allAccounts() })),
+  registerTool("list_accounts", async () => ({ accounts: await listPublicAccounts() })),
   registerTool("get_active_account", async () => ({ active: getActiveAccount() ?? "none set" })),
   registerTool("set_account", async (params) => {
     const input = z.object({ alias: z.string() }).strict().parse(params);
@@ -320,7 +334,7 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
     return withAccount(out.data, note);
   }),
   registerTool("get_api_docs", async () => ({ mimeType: "text/plain", text: API_DOCS })),
-  registerTool("get_account_list_resource", async () => ({ mimeType: "application/json", accounts: await allAccounts() })),
+  registerTool("get_account_list_resource", async () => ({ mimeType: "application/json", accounts: await listPublicAccounts() })),
 
 ]);
 
@@ -449,7 +463,7 @@ const toText = (data: unknown): string =>
 export function registerTools(server: McpServer): void {
   // ── Account management ──────────────────────────────────────────────────────
   server.registerTool("list_accounts", { description: "List all configured seller accounts from keychain" },
-    async () => ({ content: [{ type: "text" as const, text: toText({ accounts: await allAccounts() }) }] }));
+    async () => ({ content: [{ type: "text" as const, text: toText({ accounts: await listPublicAccounts() }) }] }));
 
   server.registerTool("get_active_account", { description: "Return the currently pinned seller account, or 'none set' if no account is selected" },
     async () => ({ content: [{ type: "text" as const, text: toText({ active: getActiveAccount() ?? "none set" }) }] }));
@@ -738,5 +752,5 @@ export function registerTools(server: McpServer): void {
     async () => ({ contents: [{ uri: "walmart-marketplace://api-docs", mimeType: "text/plain", text: API_DOCS }] }));
 
   server.registerResource("account-list", "walmart-marketplace://account-list", { description: "Configured seller accounts" },
-    async () => ({ contents: [{ uri: "walmart-marketplace://account-list", mimeType: "application/json", text: JSON.stringify(await allAccounts(), null, 2) }] }));
+    async () => ({ contents: [{ uri: "walmart-marketplace://account-list", mimeType: "application/json", text: JSON.stringify(await listPublicAccounts(), null, 2) }] }));
 }
