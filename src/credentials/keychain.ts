@@ -3,17 +3,38 @@ import type { SellerAccount } from "../accounts/types.js";
 const SERVICE = "walmart-marketplace-mcp";
 const key = (alias: string): string => `account:${alias}`;
 
-const loadKeyring = async (): Promise<{ setPassword: Function; getPassword: Function; deletePassword: Function } | null> => {
+interface KeytarLike {
+  setPassword(service: string, account: string, password: string): Promise<void>;
+  getPassword(service: string, account: string): Promise<string | null>;
+  deletePassword(service: string, account: string): Promise<void>;
+}
+
+const isKeytarLike = (value: unknown): value is KeytarLike => {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.setPassword === "function" &&
+    typeof v.getPassword === "function" &&
+    typeof v.deletePassword === "function"
+  );
+};
+
+const loadKeyring = async (): Promise<KeytarLike | null> => {
   try {
-    const mod = (await import("keyring")) as unknown as {
-      setPassword: Function;
-      getPassword: Function;
-      deletePassword: Function;
-    };
-    return mod;
+    const mod = (await import("keyring")) as unknown;
+    if (isKeytarLike(mod)) return mod;
+    if (isKeytarLike((mod as Record<string, unknown>).default)) {
+      return (mod as Record<string, unknown>).default as KeytarLike;
+    }
+    return null;
   } catch {
     return null;
   }
+};
+
+export const isKeychainAvailable = async (): Promise<boolean> => {
+  const keyring = await loadKeyring();
+  return keyring !== null;
 };
 
 export const saveAccountToKeychain = async (account: SellerAccount): Promise<boolean> => {
