@@ -12,5 +12,33 @@ const server = new McpServer(
 registerTools(server);
 
 const transport = new StdioServerTransport();
-await server.connect(transport);
+
+try {
+  await server.connect(transport);
+} catch (err) {
+  logger.error("Failed to start walmart-marketplace-mcp", { error: String(err) });
+  process.exit(1);
+}
+
+// Normalize null arguments to {} at transport boundary — prevents SDK crash on `arguments: null`
+const originalOnMessage = transport.onmessage;
+if (originalOnMessage) {
+  transport.onmessage = (message) => {
+    // Normalize tools/call with null arguments
+    if (
+      message &&
+      typeof message === "object" &&
+      "method" in message &&
+      (message as Record<string, unknown>).method === "tools/call" &&
+      "params" in message
+    ) {
+      const params = (message as Record<string, unknown>).params as Record<string, unknown> | null | undefined;
+      if (params && params.arguments === null) {
+        (message as Record<string, unknown>).params = { ...params, arguments: {} };
+      }
+    }
+    return originalOnMessage(message);
+  };
+}
+
 logger.info("walmart-marketplace-mcp started");
