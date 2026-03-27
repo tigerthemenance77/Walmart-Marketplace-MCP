@@ -76,7 +76,7 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
     return withAccount(out.data, out.warning);
   }),
   registerTool("get_item", async (params) => {
-    const input = z.object({ id: z.string() }).strict().parse(params);
+    const input = z.object({ id: z.string().min(1) }).strict().parse(params);
     const out = await getItem(activeAlias(), input.id);
     return withAccount(out.data, out.warning);
   }),
@@ -91,7 +91,7 @@ const tools: Record<string, ToolHandler> = Object.fromEntries([
   }),
 
   registerTool("get_orders", async (params) => {
-    const input = z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), status: z.string().optional(), shipNodeType: z.string().optional(), limit: z.number().optional() }).strict().parse(params);
+    const input = z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), status: z.string().optional(), shipNodeType: z.string().optional(), limit: z.number().int().min(1).max(200).optional() }).strict().parse(params);
     const out = await getOrders(activeAlias(), input);
     return withAccount(out.data, out.warning);
   }),
@@ -538,7 +538,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool("get_item", {
     annotations: { readOnlyHint: true },
     description: "Get full item details by SKU or Walmart item ID",
-    inputSchema: z.object({ id: z.string() })
+    inputSchema: z.object({ id: z.string().min(1) })
   }, async ({ id }) => runTool("get_item", { id }));
 
   server.registerTool("retire_item", {
@@ -551,7 +551,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool("get_orders", {
     annotations: { readOnlyHint: true },
     description: "List orders with filters. createdStartDate is required.",
-    inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), status: z.string().optional(), shipNodeType: z.string().optional(), limit: z.number().optional() })
+    inputSchema: z.object({ createdStartDate: isoDateSchema, createdEndDate: isoDateSchema.optional(), status: z.string().optional(), shipNodeType: z.string().optional(), limit: z.number().int().min(1).max(200).optional() })
   }, async (input) => runTool("get_orders", input));
 
   server.registerTool("get_order", {
