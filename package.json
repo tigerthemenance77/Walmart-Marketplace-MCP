@@ -19,7 +19,7 @@
   },
   "files": ["dist/", "README.md", ".env.example"],
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.28.0",
     "keyring": "^1.0.0",
     "zod": "^3.23.0"
   },
