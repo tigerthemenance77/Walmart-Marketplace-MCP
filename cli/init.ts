@@ -44,17 +44,21 @@ export const runInit = async (): Promise<void> => {
     | "sandbox";
 
   const detail = await verifyRawCredentials({ clientId, clientSecret, env });
+  const sellerName =
+    detail.sellerName || (env === "sandbox" ? "Seller details unavailable (sandbox)" : "Seller details unavailable");
+  const sellerId = detail.sellerId || (env === "sandbox" ? "sandbox-unavailable" : "unavailable");
+
   await saveAccount({
     alias,
     clientId,
     clientSecret,
-    sellerId: detail.sellerId,
-    sellerName: detail.sellerName,
+    sellerId,
+    sellerName,
     env,
     addedAt: new Date().toISOString().slice(0, 10),
   });
 
-  stdout.write(`Saved account ${alias} (${detail.sellerName}).\n`);
+  stdout.write(`Saved account ${alias} (${sellerName}).\n`);
   stdout.write(`Claude Desktop config snippet:\n`);
   stdout.write(
     JSON.stringify({ mcpServers: { walmartMarketplace: { command: "walmart-marketplace-mcp" } } }, null, 2) + "\n",

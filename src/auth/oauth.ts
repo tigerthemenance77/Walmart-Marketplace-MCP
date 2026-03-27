@@ -100,8 +100,23 @@ export const verifyRawCredentials = async (input: {
   });
 
   if (!detailRes.ok) throw authError();
-  const detail = (await detailRes.json()) as { sellerName?: string; sellerId?: string };
-  return { sellerName: detail.sellerName ?? "Unknown Seller", sellerId: detail.sellerId ?? "unknown", env: input.env };
+  const detail = (await detailRes.json()) as Record<string, unknown>;
+
+  const sellerName =
+    (typeof detail.sellerName === "string" && detail.sellerName.trim()) ||
+    (typeof detail.partnerName === "string" && detail.partnerName.trim()) ||
+    null;
+
+  const sellerId =
+    (typeof detail.sellerId === "string" && detail.sellerId.trim()) ||
+    (typeof detail.partnerId === "string" && detail.partnerId.trim()) ||
+    null;
+
+  return {
+    sellerName: sellerName ?? "",
+    sellerId: sellerId ?? "",
+    env: input.env,
+  };
 };
 
 export const verifyAccountCredentials = async (
@@ -122,11 +137,21 @@ export const verifyAccountCredentials = async (
   });
 
   if (!detailRes.ok) throw authError();
-  const detail = (await detailRes.json()) as { sellerName?: string; sellerId?: string };
+  const detail = (await detailRes.json()) as Record<string, unknown>;
+
+  const sellerName =
+    (typeof detail.sellerName === "string" && detail.sellerName.trim()) ||
+    (typeof detail.partnerName === "string" && detail.partnerName.trim()) ||
+    null;
+
+  const sellerId =
+    (typeof detail.sellerId === "string" && detail.sellerId.trim()) ||
+    (typeof detail.partnerId === "string" && detail.partnerId.trim()) ||
+    null;
 
   return {
-    sellerName: detail.sellerName ?? account.sellerName,
-    sellerId: detail.sellerId ?? account.sellerId,
+    sellerName: sellerName ?? account.sellerName,
+    sellerId: sellerId ?? account.sellerId,
     env: account.env,
   };
 };
